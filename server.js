@@ -145,4 +145,4 @@ app.post("/chat", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Shonen AI backend running on port ${PORT}`);
-});// redeploy v2 Mon May 25 03:40:05 UTC 2026
+});
