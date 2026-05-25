@@ -209,7 +209,7 @@ app.post("/chat-stream", async (req, res) => {
       "X-Accel-Buffering": "no",
     });
 
-    const model = "gemini-2.0-flash";
+    const model = "gemini-2.5-flash-lite";
 
     const geminiResponse = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`,
