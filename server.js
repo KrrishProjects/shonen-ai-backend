@@ -22,17 +22,17 @@ const GEMINI_MODELS = [
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
-    message: "Shonen AI backend is running"
+    message: "Shonen AI backend is running with context memory"
   });
 });
 
 app.post("/chat", async (req, res) => {
   try {
-    const { prompt, imageBase64 } = req.body;
+    const { prompt, imageBase64, history } = req.body;
 
     if (!GEMINI_API_KEY) {
       return res.status(500).json({
-        error: "GEMINI_API_KEY is missing in .env"
+        error: "GEMINI_API_KEY is missing"
       });
     }
 
@@ -42,13 +42,29 @@ app.post("/chat", async (req, res) => {
       });
     }
 
-    const parts = [];
+    let contextText = "";
 
-    if (prompt && prompt.trim() !== "") {
-      parts.push({
-        text: prompt
-      });
+    if (Array.isArray(history) && history.length > 0) {
+      contextText += "Previous conversation:\n\n";
+
+      for (const item of history) {
+        if (!item || !item.text) continue;
+
+        const speaker = item.role === "model" ? "Assistant" : "User";
+        contextText += `${speaker}: ${item.text}\n\n`;
+      }
+
+      contextText +=
+        "Use the previous conversation to understand references like he, she, her, him, it, they, this, that, and more.\n\n";
     }
+
+    contextText += `Current user message: ${prompt || "Describe this image."}`;
+
+    const parts = [
+      {
+        text: contextText
+      }
+    ];
 
     if (imageBase64) {
       parts.push({
@@ -75,7 +91,8 @@ app.post("/chat", async (req, res) => {
           body: JSON.stringify({
             contents: [
               {
-                parts: parts
+                role: "user",
+                parts
               }
             ]
           })
