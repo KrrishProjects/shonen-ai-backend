@@ -22,7 +22,7 @@ const GEMINI_MODELS = [
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
-    message: "Shonen AI backend is running with context memory"
+    message: "Shonen AI backend is running with context memory v2"
   });
 });
 
@@ -42,27 +42,33 @@ app.post("/chat", async (req, res) => {
       });
     }
 
-    let contextText = "";
+    let conversationText = "";
 
     if (Array.isArray(history) && history.length > 0) {
-      contextText += "Previous conversation:\n\n";
+      conversationText +=
+        "You are Shonen AI. Continue the conversation using the context below.\n\n";
+      conversationText += "Conversation so far:\n";
 
       for (const item of history) {
         if (!item || !item.text) continue;
 
         const speaker = item.role === "model" ? "Assistant" : "User";
-        contextText += `${speaker}: ${item.text}\n\n`;
+        conversationText += `${speaker}: ${item.text}\n`;
       }
 
-      contextText +=
-        "Use the previous conversation to understand references like he, she, her, him, it, they, this, that, and more.\n\n";
+      conversationText += "\n";
     }
 
-    contextText += `Current user message: ${prompt || "Describe this image."}`;
+    conversationText += `User's latest message: ${
+      prompt || "Describe this image."
+    }\n\n`;
+
+    conversationText +=
+      "Important: If the user says he, she, her, his, him, it, this, that, or more, use the previous conversation to understand who or what they mean. Do not ask for clarification if the context already makes it clear.";
 
     const parts = [
       {
-        text: contextText
+        text: conversationText
       }
     ];
 
