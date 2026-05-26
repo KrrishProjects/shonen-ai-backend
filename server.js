@@ -1,3 +1,4 @@
+const Razorpay = require("razorpay");
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -8,6 +9,22 @@ import admin from "firebase-admin";
 dotenv.config();
 
 const app = express();
+
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
+
+const SUBSCRIPTION_PLANS = {
+  premium_monthly: {
+    plan: "premium",
+    label: "Shonen AI Premium Monthly",
+    amount: 9900, // ₹99 in paise
+    currency: "INR",
+    days: 30,
+  },
+};
+
 
 app.use(cors());
 app.use(express.json({ limit: "25mb" }));
@@ -375,6 +392,62 @@ app.post("/chat-stream", aiLimiter, verifyFirebaseUser, async (req, res) => {
     res.end();
   }
 });
+
+
+app.post("/create-razorpay-order", async (req, res) => {
+  try {
+    const uid = req.user?.uid || req.body?.uid;
+    const email = req.user?.email || req.body?.email || "";
+
+    const planId = req.body?.planId || "premium_monthly";
+    const selectedPlan = SUBSCRIPTION_PLANS[planId];
+
+    if (!selectedPlan) {
+      return res.status(400).json({
+        error: "Invalid subscription plan",
+      });
+    }
+
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      return res.status(500).json({
+        error: "Razorpay keys are not configured on backend",
+      });
+    }
+
+    const receipt = `shonen_${Date.now()}`.slice(0, 40);
+
+    const order = await razorpay.orders.create({
+      amount: selectedPlan.amount,
+      currency: selectedPlan.currency,
+      receipt,
+      notes: {
+        uid: uid || "unknown",
+        email,
+        planId,
+        plan: selectedPlan.plan,
+      },
+    });
+
+    return res.json({
+      success: true,
+      keyId: process.env.RAZORPAY_KEY_ID,
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      planId,
+      plan: selectedPlan.plan,
+      label: selectedPlan.label,
+      days: selectedPlan.days,
+    });
+  } catch (error) {
+    console.error("Create Razorpay order error:", error);
+    return res.status(500).json({
+      error: "Failed to create Razorpay order",
+      details: error?.message || String(error),
+    });
+  }
+});
+
 
 app.listen(PORT, () => {
   console.log(`Shonen AI backend running on port ${PORT}`);
