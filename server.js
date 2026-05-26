@@ -565,6 +565,68 @@ app.post("/verify-razorpay-payment", async (req, res) => {
 });
 
 
+
+app.post("/create-razorpay-payment-link", async (req, res) => {
+  try {
+    const {
+      planId = "premium_monthly",
+      amount = 9900,
+      currency = "INR",
+      uid,
+      email = "",
+      name = "Shonen AI User",
+    } = req.body || {};
+
+    if (!uid) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing user uid",
+      });
+    }
+
+    const paymentLink = await razorpay.paymentLink.create({
+      amount,
+      currency,
+      accept_partial: false,
+      description: "Shonen AI Premium Monthly Plan",
+      customer: {
+        name,
+        email,
+      },
+      notify: {
+        sms: false,
+        email: true,
+      },
+      reminder_enable: true,
+      notes: {
+        uid,
+        planId,
+        source: "shonen_ai_flutter",
+      },
+      callback_url: "https://shonen-ai-backend.onrender.com/payment-success",
+      callback_method: "get",
+    });
+
+    return res.json({
+      success: true,
+      paymentLinkId: paymentLink.id,
+      paymentUrl: paymentLink.short_url,
+      short_url: paymentLink.short_url,
+    });
+  } catch (error) {
+    console.error("Create Razorpay payment link error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Could not create Razorpay payment link",
+    });
+  }
+});
+
+app.get("/payment-success", async (req, res) => {
+  return res.send("Payment completed. You can go back to Shonen AI.");
+});
+
+
 app.listen(PORT, () => {
   console.log(`Shonen AI backend running on port ${PORT}`);
 });
