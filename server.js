@@ -1,4 +1,5 @@
 import Razorpay from "razorpay";
+import crypto from "crypto";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -443,6 +444,121 @@ app.post("/create-razorpay-order", async (req, res) => {
     console.error("Create Razorpay order error:", error);
     return res.status(500).json({
       error: "Failed to create Razorpay order",
+      details: error?.message || String(error),
+    });
+  }
+});
+
+
+
+app.post("/verify-razorpay-payment", async (req, res) => {
+  try {
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      planId = "premium_monthly",
+      uid,
+      email = "",
+    } = req.body || {};
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing Razorpay payment verification fields",
+      });
+    }
+
+    const selectedPlan = SUBSCRIPTION_PLANS[planId];
+
+    if (!selectedPlan) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid subscription plan",
+      });
+    }
+
+    const verifiedUid = req.user?.uid || uid;
+
+    if (!verifiedUid) {
+      return res.status(401).json({
+        success: false,
+        error: "User ID missing. Please sign in again.",
+      });
+    }
+
+    if (!process.env.RAZORPAY_KEY_SECRET) {
+      return res.status(500).json({
+        success: false,
+        error: "Razorpay secret is not configured on backend",
+      });
+    }
+
+    const body = `${razorpay_order_id}|${razorpay_payment_id}`;
+
+    const expectedSignature = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(body)
+      .digest("hex");
+
+    if (expectedSignature !== razorpay_signature) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid payment signature",
+      });
+    }
+
+    const now = new Date();
+    const premiumUntil = new Date(
+      now.getTime() + selectedPlan.days * 24 * 60 * 60 * 1000
+    );
+
+    const subscriptionData = {
+      plan: selectedPlan.plan,
+      planId,
+      label: selectedPlan.label,
+      amount: selectedPlan.amount,
+      currency: selectedPlan.currency,
+      premiumUntil: premiumUntil.toISOString(),
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      email,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await db
+      .collection("users")
+      .doc(verifiedUid)
+      .collection("subscription")
+      .doc("main")
+      .set(subscriptionData, { merge: true });
+
+    await db
+      .collection("users")
+      .doc(verifiedUid)
+      .collection("usage")
+      .doc("daily")
+      .set(
+        {
+          plan: selectedPlan.plan,
+          premiumUntil: premiumUntil.toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+
+    return res.json({
+      success: true,
+      message: "Payment verified and premium activated",
+      plan: selectedPlan.plan,
+      planId,
+      premiumUntil: premiumUntil.toISOString(),
+    });
+  } catch (error) {
+    console.error("Verify Razorpay payment error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to verify Razorpay payment",
       details: error?.message || String(error),
     });
   }
