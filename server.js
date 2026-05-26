@@ -1,4 +1,4 @@
-const Razorpay = require("razorpay");
+import Razorpay from "razorpay";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
