@@ -43,11 +43,6 @@ const TOGETHER_MODEL =
 const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL || "llama-3.3-70b";
 const PORT = process.env.PORT || 3000;
 
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "krishsprojects@gmail.com")
-  .split(",")
-  .map((email) => email.trim().toLowerCase())
-  .filter(Boolean);
-
 const GEMINI_MODELS = [
   "gemini-2.5-flash",
   "gemini-2.5-flash-lite",
@@ -124,19 +119,6 @@ async function verifyFirebaseUser(req, res, next) {
       error: "Unauthorized. Invalid or expired Firebase login token."
     });
   }
-}
-
-function requireAdminUser(req, res, next) {
-  const email = (req.user?.email || "").toLowerCase();
-
-  if (!email || !ADMIN_EMAILS.includes(email)) {
-    return res.status(403).json({
-      success: false,
-      error: "Forbidden. Admin access only.",
-    });
-  }
-
-  next();
 }
 
 function buildConversationText(prompt, history) {
@@ -546,17 +528,6 @@ app.get("/secure-health", verifyFirebaseUser, (req, res) => {
     status: "authenticated",
     uid: req.user.uid,
     email: req.user.email
-  });
-});
-
-app.get("/admin/health", verifyFirebaseUser, requireAdminUser, (req, res) => {
-  res.json({
-    success: true,
-    message: "Shonen AI admin backend access verified.",
-    adminEmail: req.user.email,
-    backend: "healthy",
-    app: "Shonen AI",
-    timestamp: new Date().toISOString(),
   });
 });
 
