@@ -481,12 +481,12 @@ app.get("/app-version", (req, res) => {
   res.json({
     success: true,
     appName: "Shonen AI",
-    latestVersion: "0.1.1",
-    latestBuild: 2,
+    latestVersion: "0.1.0",
+    latestBuild: 1,
     minRequiredBuild: 1,
     forceUpdate: false,
-    updateTitle: "Update Available",
-    updateMessage: "A new Shonen AI update is available. Download the latest APK for improvements and fixes.",
+    updateTitle: "Shonen AI is up to date",
+    updateMessage: "You are using the latest version of Shonen AI.",
     apkUrl: "https://github.com/KrrishProjects/shonen_ai_website/releases/download/v1.0.0/ShonenAI.apk",
     websiteUrl: "https://krrishprojects.github.io/shonen_ai_website/",
     changelog: [
