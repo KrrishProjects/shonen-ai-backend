@@ -433,40 +433,6 @@ app.get("/health", (req, res) => {
   });
 });
 
-app.get("/ai-router-test", async (req, res) => {
-  try {
-    const promptText =
-      "Say exactly this sentence only: Shonen AI fallback router test successful.";
-
-    const parts = [
-      {
-        text: promptText,
-      },
-    ];
-
-    const result = await generateAiReplyWithFallback({
-      promptText,
-      parts,
-      hasImage: false,
-    });
-
-    return res.json({
-      success: true,
-      provider: result.provider,
-      model: result.model,
-      reply: result.text,
-    });
-  } catch (error) {
-    console.error("AI router test error:", error);
-
-    return res.status(error.status || 500).json({
-      success: false,
-      error: error.message || "AI router test failed.",
-      failures: error.failures || [],
-    });
-  }
-});
-
 app.get("/secure-health", verifyFirebaseUser, (req, res) => {
   res.json({
     status: "authenticated",
