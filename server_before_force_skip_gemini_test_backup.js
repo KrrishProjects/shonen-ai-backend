@@ -261,16 +261,6 @@ async function callOpenAiCompatibleProvider({
 }
 
 async function callGeminiProvider(parts) {
-  if (process.env.FORCE_SKIP_GEMINI === "true") {
-    return {
-      ok: false,
-      provider: "gemini",
-      model: "skipped_for_test",
-      status: 503,
-      error: "Gemini skipped because FORCE_SKIP_GEMINI=true.",
-    };
-  }
-
   if (!GEMINI_API_KEY) {
     return {
       ok: false,
