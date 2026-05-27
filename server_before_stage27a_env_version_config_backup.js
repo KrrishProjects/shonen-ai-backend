@@ -478,46 +478,26 @@ app.get("/ai-router-test", async (req, res) => {
 });
 
 app.get("/app-version", (req, res) => {
-  const latestVersion = process.env.APP_LATEST_VERSION || "1.0.1";
-  const latestBuild = Number(process.env.APP_LATEST_BUILD || 2);
-  const minRequiredBuild = Number(process.env.APP_MIN_REQUIRED_BUILD || 1);
-  const forceUpdate = process.env.APP_FORCE_UPDATE === "true";
-
-  const apkUrl =
-    process.env.APP_APK_URL ||
-    "https://github.com/KrrishProjects/shonen_ai_website/releases/download/v1.0.1/ShonenAI-v1.0.1.apk";
-
-  const websiteUrl =
-    process.env.APP_WEBSITE_URL ||
-    "https://krrishprojects.github.io/shonen_ai_website/";
-
-  const updateTitle =
-    process.env.APP_UPDATE_TITLE || `Shonen AI v${latestVersion} is available`;
-
-  const updateMessage =
-    process.env.APP_UPDATE_MESSAGE ||
-    "A new Shonen AI update is available with update checker, feedback support, changelog, contact developer, and release polish.";
-
   res.json({
     success: true,
     appName: "Shonen AI",
-    latestVersion,
-    latestBuild,
-    minRequiredBuild,
-    forceUpdate,
-    updateTitle,
-    updateMessage,
-    apkUrl,
-    websiteUrl,
+    latestVersion: "1.0.1",
+    latestBuild: 2,
+    minRequiredBuild: 1,
+    forceUpdate: false,
+    updateTitle: "Shonen AI v1.0.1 is available",
+    updateMessage: "A new Shonen AI update is available with update checker, feedback support, changelog, contact developer, and release polish.",
+    apkUrl: "https://github.com/KrrishProjects/shonen_ai_website/releases/download/v1.0.1/ShonenAI-v1.0.1.apk",
+    websiteUrl: "https://krrishprojects.github.io/shonen_ai_website/",
     changelog: [
-      "In-app update checker",
-      "Update Available dialog",
-      "Changelog inside app",
-      "Download Latest APK button",
-      "Feedback & Support",
-      "Contact Developer",
-      "Official website integration",
-      "AI provider fallback router"
+      "AI Chat",
+      "Tools Hub",
+      "PDF Tools",
+      "Voice Mode",
+      "Profile Memory",
+      "Usage Limits",
+      "Premium payment link flow",
+      "Official website link"
     ],
     updatedAt: new Date().toISOString()
   });
