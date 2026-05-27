@@ -170,254 +170,6 @@ function formatGeminiError(status, data) {
   return message;
 }
 
-
-function isRetryableAiStatus(status) {
-  return [408, 429, 500, 502, 503, 504].includes(status);
-}
-
-function extractOpenAiText(data) {
-  return (
-    data?.choices?.[0]?.message?.content ||
-    data?.choices?.[0]?.delta?.content ||
-    ""
-  );
-}
-
-async function callOpenAiCompatibleProvider({
-  provider,
-  apiKey,
-  url,
-  model,
-  promptText,
-}) {
-  if (!apiKey) {
-    return {
-      ok: false,
-      skipped: true,
-      provider,
-      model,
-      status: 0,
-      error: "Missing API key",
-    };
-  }
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are Shonen AI, a helpful productivity AI assistant for students, creators, small businesses, and career users.",
-          },
-          {
-            role: "user",
-            content: promptText,
-          },
-        ],
-        temperature: 0.7,
-      }),
-    });
-
-    const data = await response.json().catch(() => ({}));
-    const text = extractOpenAiText(data);
-
-    if (!response.ok || !text) {
-      return {
-        ok: false,
-        provider,
-        model,
-        status: response.status,
-        error:
-          data?.error?.message ||
-          data?.message ||
-          `Provider ${provider} failed.`,
-        rawError: data,
-      };
-    }
-
-    return {
-      ok: true,
-      provider,
-      model,
-      status: response.status,
-      text,
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      provider,
-      model,
-      status: 500,
-      error: error.message || `${provider} request failed.`,
-    };
-  }
-}
-
-async function callGeminiProvider(parts) {
-  if (!GEMINI_API_KEY) {
-    return {
-      ok: false,
-      provider: "gemini",
-      model: null,
-      status: 500,
-      error: "GEMINI_API_KEY is missing.",
-    };
-  }
-
-  let finalData = null;
-  let finalStatus = 500;
-  let finalModel = null;
-
-  for (const model of GEMINI_MODELS) {
-    try {
-      const geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: "user",
-                parts,
-              },
-            ],
-          }),
-        }
-      );
-
-      finalData = await geminiResponse.json().catch(() => ({}));
-      finalStatus = geminiResponse.status;
-      finalModel = model;
-
-      if (geminiResponse.ok) {
-        const text =
-          finalData?.candidates?.[0]?.content?.parts?.[0]?.text ||
-          "No response received.";
-
-        return {
-          ok: true,
-          provider: "gemini",
-          model,
-          status: geminiResponse.status,
-          text,
-        };
-      }
-
-      console.log(
-        `Gemini model failed: ${model}`,
-        finalStatus,
-        finalData?.error?.message
-      );
-
-      if (!isRetryableAiStatus(finalStatus)) {
-        break;
-      }
-    } catch (error) {
-      finalStatus = 500;
-      finalData = { error: { message: error.message } };
-      finalModel = model;
-      console.log(`Gemini model crashed: ${model}`, error.message);
-    }
-  }
-
-  return {
-    ok: false,
-    provider: "gemini",
-    model: finalModel,
-    status: finalStatus,
-    error: formatGeminiError(finalStatus, finalData),
-    rawError: finalData,
-  };
-}
-
-async function generateAiReplyWithFallback({ promptText, parts, hasImage }) {
-  const failures = [];
-
-  const geminiResult = await callGeminiProvider(parts);
-
-  if (geminiResult.ok) {
-    return geminiResult;
-  }
-
-  failures.push(geminiResult);
-
-  if (hasImage) {
-    throw {
-      status: geminiResult.status || 500,
-      message: geminiResult.error || "Image AI request failed.",
-      failures,
-    };
-  }
-
-  const providers = [
-    {
-      provider: "groq",
-      apiKey: GROQ_API_KEY,
-      url: "https://api.groq.com/openai/v1/chat/completions",
-      model: GROQ_MODEL,
-    },
-    {
-      provider: "mistral",
-      apiKey: MISTRAL_API_KEY,
-      url: "https://api.mistral.ai/v1/chat/completions",
-      model: MISTRAL_MODEL,
-    },
-    {
-      provider: "together",
-      apiKey: TOGETHER_API_KEY,
-      url: "https://api.together.xyz/v1/chat/completions",
-      model: TOGETHER_MODEL,
-    },
-    {
-      provider: "cerebras",
-      apiKey: CEREBRAS_API_KEY,
-      url: "https://api.cerebras.ai/v1/chat/completions",
-      model: CEREBRAS_MODEL,
-    },
-  ];
-
-  for (const providerConfig of providers) {
-    const result = await callOpenAiCompatibleProvider({
-      ...providerConfig,
-      promptText,
-    });
-
-    if (result.skipped) {
-      continue;
-    }
-
-    if (result.ok) {
-      return result;
-    }
-
-    failures.push(result);
-
-    console.log(
-      `AI provider failed: ${result.provider}`,
-      result.status,
-      result.error
-    );
-  }
-
-  throw {
-    status: 503,
-    message:
-      "Shonen AI is busy right now. Please try again in a few minutes.",
-    failures,
-  };
-}
-
-
 app.get("/", (req, res) => {
   res.json({
     status: "ok",
@@ -445,48 +197,92 @@ app.post("/chat", aiLimiter, verifyFirebaseUser, async (req, res) => {
   try {
     const { prompt, imageBase64, history } = req.body;
 
-    if (!prompt && !imageBase64) {
-      return res.status(400).json({
-        error: "Prompt or image is required.",
+    if (!GEMINI_API_KEY) {
+      return res.status(500).json({
+        error: "GEMINI_API_KEY is missing."
       });
     }
 
-    const promptText = buildConversationText(prompt, history);
+    if (!prompt && !imageBase64) {
+      return res.status(400).json({
+        error: "Prompt or image is required."
+      });
+    }
 
     const parts = [
       {
-        text: promptText,
-      },
+        text: buildConversationText(prompt, history)
+      }
     ];
 
     if (imageBase64) {
       parts.push({
         inline_data: {
           mime_type: "image/jpeg",
-          data: imageBase64,
-        },
+          data: imageBase64
+        }
       });
     }
 
-    const result = await generateAiReplyWithFallback({
-      promptText,
-      parts,
-      hasImage: Boolean(imageBase64),
-    });
+    let finalData = null;
+    let finalStatus = 500;
+    let finalModel = null;
+    let success = false;
+
+    for (const model of GEMINI_MODELS) {
+      const geminiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts
+              }
+            ]
+          })
+        }
+      );
+
+      finalData = await geminiResponse.json();
+      finalStatus = geminiResponse.status;
+      finalModel = model;
+
+      if (geminiResponse.ok) {
+        success = true;
+        break;
+      }
+
+      console.log(
+        `Model failed: ${model}`,
+        finalStatus,
+        finalData?.error?.message
+      );
+    }
+
+    if (!success) {
+      return res.status(finalStatus).json({
+        error: formatGeminiError(finalStatus, finalData),
+        rawError: finalData,
+        modelTriedLast: finalModel
+      });
+    }
+
+    const text =
+      finalData?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "No response received.";
 
     return res.json({
-      reply: result.text,
-      provider: result.provider,
-      model: result.model,
+      reply: text,
+      model: finalModel
     });
   } catch (error) {
-    console.error("AI router error:", error);
-
-    return res.status(error.status || 500).json({
-      error:
-        error.message ||
-        "Shonen AI is busy right now. Please try again in a few minutes.",
-      failures: error.failures || undefined,
+    return res.status(500).json({
+      error: error.message || "Server error"
     });
   }
 });
