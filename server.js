@@ -1142,6 +1142,129 @@ app.get("/payment-success", async (req, res) => {
 });
 
 
+
+
+app.post("/admin/activate-premium", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.slice("Bearer ".length)
+      : null;
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized. Missing Firebase login token.",
+      });
+    }
+
+    const decoded = await admin.auth().verifyIdToken(token);
+    const adminEmail = decoded.email || "";
+
+    const adminEmails = (process.env.ADMIN_EMAILS || "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (!adminEmails.includes(adminEmail.toLowerCase())) {
+      return res.status(403).json({
+        success: false,
+        error: "Forbidden. This email is not allowed as admin.",
+      });
+    }
+
+    const { email, durationDays = 30, note = "" } = req.body || {};
+
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "User email is required.",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail.includes("@")) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid email address.",
+      });
+    }
+
+    const safeDurationDays = Math.max(
+      1,
+      Math.min(Number(durationDays) || 30, 3650)
+    );
+
+    const targetUser = await admin.auth().getUserByEmail(normalizedEmail);
+
+    const now = new Date();
+    const premiumUntil = new Date(
+      now.getTime() + safeDurationDays * 24 * 60 * 60 * 1000
+    );
+
+    const existingClaims = targetUser.customClaims || {};
+
+    await admin.auth().setCustomUserClaims(targetUser.uid, {
+      ...existingClaims,
+      plan: "premium",
+      isPremium: true,
+    });
+
+    await admin
+      .firestore()
+      .collection("users")
+      .doc(targetUser.uid)
+      .set(
+        {
+          uid: targetUser.uid,
+          email: targetUser.email || normalizedEmail,
+          displayName: targetUser.displayName || "",
+          plan: "premium",
+          isPremium: true,
+          premiumStatus: "active",
+          premiumUntil: premiumUntil.toISOString(),
+          premiumActivatedAt: now.toISOString(),
+          premiumActivatedBy: adminEmail,
+          premiumActivationSource: "manual_admin",
+          premiumNote: note || "",
+          lastPaymentId: "manual_admin",
+          updatedAt: now.toISOString(),
+        },
+        { merge: true }
+      );
+
+    return res.json({
+      success: true,
+      message: "Premium activated successfully.",
+      user: {
+        uid: targetUser.uid,
+        email: targetUser.email || normalizedEmail,
+        displayName: targetUser.displayName || "",
+        plan: "premium",
+        premiumStatus: "active",
+        premiumUntil: premiumUntil.toISOString(),
+        durationDays: safeDurationDays,
+      },
+    });
+  } catch (error) {
+    console.error("Manual premium activation error:", error);
+
+    if (error.code === "auth/user-not-found") {
+      return res.status(404).json({
+        success: false,
+        error: "No Firebase user found with this email.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Failed to activate premium.",
+    });
+  }
+});
+
+
 app.listen(PORT, () => {
   console.log(`Shonen AI backend running on port ${PORT}`);
 });
