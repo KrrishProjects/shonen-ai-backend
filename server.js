@@ -1265,6 +1265,117 @@ app.post("/admin/activate-premium", async (req, res) => {
 });
 
 
+
+
+app.post("/admin/remove-premium", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.slice("Bearer ".length)
+      : null;
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized. Missing Firebase login token.",
+      });
+    }
+
+    const decoded = await admin.auth().verifyIdToken(token);
+    const adminEmail = decoded.email || "";
+
+    const adminEmails = (process.env.ADMIN_EMAILS || "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (!adminEmails.includes(adminEmail.toLowerCase())) {
+      return res.status(403).json({
+        success: false,
+        error: "Forbidden. This email is not allowed as admin.",
+      });
+    }
+
+    const { email, note = "" } = req.body || {};
+
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "User email is required.",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail.includes("@")) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid email address.",
+      });
+    }
+
+    const targetUser = await admin.auth().getUserByEmail(normalizedEmail);
+
+    const existingClaims = targetUser.customClaims || {};
+    const nextClaims = { ...existingClaims };
+
+    delete nextClaims.plan;
+    delete nextClaims.isPremium;
+
+    await admin.auth().setCustomUserClaims(targetUser.uid, nextClaims);
+
+    const now = new Date();
+
+    await admin
+      .firestore()
+      .collection("users")
+      .doc(targetUser.uid)
+      .set(
+        {
+          uid: targetUser.uid,
+          email: targetUser.email || normalizedEmail,
+          displayName: targetUser.displayName || "",
+          plan: "free",
+          isPremium: false,
+          premiumStatus: "cancelled",
+          premiumRemovedAt: now.toISOString(),
+          premiumRemovedBy: adminEmail,
+          premiumRemovalSource: "manual_admin",
+          premiumRemovalNote: note || "",
+          updatedAt: now.toISOString(),
+        },
+        { merge: true }
+      );
+
+    return res.json({
+      success: true,
+      message: "Premium removed successfully.",
+      user: {
+        uid: targetUser.uid,
+        email: targetUser.email || normalizedEmail,
+        displayName: targetUser.displayName || "",
+        plan: "free",
+        premiumStatus: "cancelled",
+      },
+    });
+  } catch (error) {
+    console.error("Manual premium removal error:", error);
+
+    if (error.code === "auth/user-not-found") {
+      return res.status(404).json({
+        success: false,
+        error: "No Firebase user found with this email.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Failed to remove premium.",
+    });
+  }
+});
+
+
 app.listen(PORT, () => {
   console.log(`Shonen AI backend running on port ${PORT}`);
 });
