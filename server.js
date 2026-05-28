@@ -1376,6 +1376,268 @@ app.post("/admin/remove-premium", async (req, res) => {
 });
 
 
+
+
+async function verifyAdminFromRequest(req) {
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.slice("Bearer ".length)
+    : null;
+
+  if (!token) {
+    const error = new Error("Unauthorized. Missing Firebase login token.");
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const decoded = await admin.auth().verifyIdToken(token);
+  const adminEmail = decoded.email || "";
+
+  const adminEmails = (process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (!adminEmails.includes(adminEmail.toLowerCase())) {
+    const error = new Error("Forbidden. This email is not allowed as admin.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  return { decoded, adminEmail };
+}
+
+async function verifyUserFromRequest(req) {
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.slice("Bearer ".length)
+    : null;
+
+  if (!token) {
+    const error = new Error("Unauthorized. Missing Firebase login token.");
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const decoded = await admin.auth().verifyIdToken(token);
+
+  return {
+    decoded,
+    uid: decoded.uid,
+    email: decoded.email || "",
+    name: decoded.name || "",
+  };
+}
+
+app.post("/feedback", async (req, res) => {
+  try {
+    const user = await verifyUserFromRequest(req);
+
+    const {
+      type = "General Feedback",
+      message = "",
+      appVersion = "",
+      buildNumber = "",
+      device = "",
+    } = req.body || {};
+
+    const safeType = String(type || "General Feedback").trim();
+    const safeMessage = String(message || "").trim();
+
+    if (!safeMessage || safeMessage.length < 5) {
+      return res.status(400).json({
+        success: false,
+        error: "Feedback message is required.",
+      });
+    }
+
+    const now = new Date();
+
+    const feedbackRef = await admin.firestore().collection("feedback").add({
+      uid: user.uid,
+      email: user.email,
+      name: user.name,
+      type: safeType,
+      message: safeMessage.slice(0, 5000),
+      appVersion: String(appVersion || ""),
+      buildNumber: String(buildNumber || ""),
+      device: String(device || ""),
+      status: "new",
+      archived: false,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    });
+
+    return res.json({
+      success: true,
+      message: "Feedback submitted successfully.",
+      feedbackId: feedbackRef.id,
+    });
+  } catch (error) {
+    console.error("Feedback submit error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      error: error.message || "Failed to submit feedback.",
+    });
+  }
+});
+
+app.get("/admin/feedback-overview", async (req, res) => {
+  try {
+    await verifyAdminFromRequest(req);
+
+    const snapshot = await admin
+      .firestore()
+      .collection("feedback")
+      .orderBy("createdAt", "desc")
+      .limit(100)
+      .get();
+
+    const feedback = [];
+    let total = 0;
+    let newCount = 0;
+    let reviewedCount = 0;
+    let resolvedCount = 0;
+    let archivedCount = 0;
+
+    snapshot.forEach((doc) => {
+      const data = doc.data() || {};
+      total += 1;
+
+      if (data.archived) archivedCount += 1;
+      if (data.status === "new") newCount += 1;
+      if (data.status === "reviewed") reviewedCount += 1;
+      if (data.status === "resolved") resolvedCount += 1;
+
+      feedback.push({
+        id: doc.id,
+        uid: data.uid || "",
+        email: data.email || "",
+        name: data.name || "",
+        type: data.type || "General Feedback",
+        message: data.message || "",
+        appVersion: data.appVersion || "",
+        buildNumber: data.buildNumber || "",
+        device: data.device || "",
+        status: data.status || "new",
+        archived: Boolean(data.archived),
+        createdAt: data.createdAt || "",
+        updatedAt: data.updatedAt || "",
+      });
+    });
+
+    return res.json({
+      success: true,
+      total,
+      newCount,
+      reviewedCount,
+      resolvedCount,
+      archivedCount,
+      feedback,
+    });
+  } catch (error) {
+    console.error("Feedback overview error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      error: error.message || "Failed to load feedback.",
+    });
+  }
+});
+
+app.post("/admin/feedback-status", async (req, res) => {
+  try {
+    const adminUser = await verifyAdminFromRequest(req);
+
+    const { feedbackId, status } = req.body || {};
+
+    const allowedStatuses = ["new", "reviewed", "resolved"];
+
+    if (!feedbackId || typeof feedbackId !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "feedbackId is required.",
+      });
+    }
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid feedback status.",
+      });
+    }
+
+    const now = new Date();
+
+    await admin.firestore().collection("feedback").doc(feedbackId).set(
+      {
+        status,
+        updatedAt: now.toISOString(),
+        statusUpdatedAt: now.toISOString(),
+        statusUpdatedBy: adminUser.adminEmail,
+      },
+      { merge: true }
+    );
+
+    return res.json({
+      success: true,
+      message: "Feedback status updated.",
+      feedbackId,
+      status,
+    });
+  } catch (error) {
+    console.error("Feedback status update error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      error: error.message || "Failed to update feedback status.",
+    });
+  }
+});
+
+app.post("/admin/archive-feedback", async (req, res) => {
+  try {
+    const adminUser = await verifyAdminFromRequest(req);
+
+    const { feedbackId } = req.body || {};
+
+    if (!feedbackId || typeof feedbackId !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "feedbackId is required.",
+      });
+    }
+
+    const now = new Date();
+
+    await admin.firestore().collection("feedback").doc(feedbackId).set(
+      {
+        archived: true,
+        status: "resolved",
+        updatedAt: now.toISOString(),
+        archivedAt: now.toISOString(),
+        archivedBy: adminUser.adminEmail,
+      },
+      { merge: true }
+    );
+
+    return res.json({
+      success: true,
+      message: "Feedback archived.",
+      feedbackId,
+    });
+  } catch (error) {
+    console.error("Feedback archive error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      error: error.message || "Failed to archive feedback.",
+    });
+  }
+});
+
+
 app.listen(PORT, () => {
   console.log(`Shonen AI backend running on port ${PORT}`);
 });
