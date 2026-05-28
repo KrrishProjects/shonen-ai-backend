@@ -742,6 +742,37 @@ app.get("/admin/users-overview", verifyFirebaseUser, requireAdminUser, async (re
   }
 });
 
+
+
+async function verifyAdminForAiMonitor(req) {
+  const authHeader = req.headers.authorization || "";
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.slice("Bearer ".length)
+    : null;
+
+  if (!token) {
+    const error = new Error("Unauthorized. Missing Firebase login token.");
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const decoded = await admin.auth().verifyIdToken(token);
+  const adminEmail = decoded.email || "";
+
+  const adminEmails = (process.env.ADMIN_EMAILS || "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (!adminEmails.includes(adminEmail.toLowerCase())) {
+    const error = new Error("Forbidden. This email is not allowed as admin.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  return { decoded, adminEmail };
+}
+
 app.post("/chat", aiLimiter, verifyFirebaseUser, async (req, res) => {
   try {
     const { prompt, imageBase64, history } = req.body;
@@ -1633,6 +1664,80 @@ app.post("/admin/archive-feedback", async (req, res) => {
     return res.status(error.statusCode || 500).json({
       success: false,
       error: error.message || "Failed to archive feedback.",
+    });
+  }
+});
+
+
+
+
+app.get("/admin/ai-provider-monitor", async (req, res) => {
+  try {
+    const adminUser = await verifyAdminForAiMonitor(req);
+
+    const hasGeminiKey = Boolean(process.env.GEMINI_API_KEY);
+    const hasGroqKey = Boolean(process.env.GROQ_API_KEY);
+    const forceSkipGemini = String(process.env.FORCE_SKIP_GEMINI || "false").toLowerCase() === "true";
+
+    const geminiModel =
+      process.env.GEMINI_MODEL ||
+      process.env.GOOGLE_GEMINI_MODEL ||
+      "gemini-1.5-flash";
+
+    const groqModel =
+      process.env.GROQ_MODEL ||
+      "llama-3.1-8b-instant";
+
+    let recommendedProvider = "none";
+
+    if (!forceSkipGemini && hasGeminiKey) {
+      recommendedProvider = "gemini";
+    } else if (hasGroqKey) {
+      recommendedProvider = "groq";
+    }
+
+    const providers = [
+      {
+        provider: "gemini",
+        configured: hasGeminiKey,
+        skipped: forceSkipGemini,
+        model: geminiModel,
+        status: hasGeminiKey && !forceSkipGemini ? "available" : forceSkipGemini ? "skipped" : "missing_key",
+      },
+      {
+        provider: "groq",
+        configured: hasGroqKey,
+        skipped: false,
+        model: groqModel,
+        status: hasGroqKey ? "available" : "missing_key",
+      },
+    ];
+
+    return res.json({
+      success: true,
+      checkedBy: adminUser.adminEmail,
+      checkedAt: new Date().toISOString(),
+      activeProvider: recommendedProvider,
+      fallbackOrder: ["gemini", "groq"],
+      forceSkipGemini,
+      providers,
+      env: {
+        hasGeminiKey,
+        hasGroqKey,
+        geminiModel,
+        groqModel,
+      },
+      message:
+        recommendedProvider === "none"
+          ? "No AI provider keys are configured."
+          : `AI router should use ${recommendedProvider} first.`,
+    });
+  } catch (error) {
+    console.error("AI provider monitor error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      error: error.message || "Failed to load AI provider monitor.",
     });
   }
 });
