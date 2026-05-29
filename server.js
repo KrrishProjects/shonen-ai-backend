@@ -469,6 +469,33 @@ app.get("/health", (req, res) => {
   });
 });
 
+
+app.get("/deepseek-test", async (req, res) => {
+  const promptText =
+    "Say exactly this sentence only: DeepSeek fallback test successful.";
+
+  const result = await callOpenAiCompatibleProvider({
+    provider: "deepseek",
+    apiKey: DEEPSEEK_API_KEY,
+    url: "https://api.deepseek.com/chat/completions",
+    model: DEEPSEEK_MODEL,
+    promptText,
+  });
+
+  return res.status(result.ok ? 200 : 500).json({
+    success: result.ok,
+    provider: result.provider,
+    model: result.model,
+    status: result.status,
+    skipped: result.skipped || false,
+    reply: result.text || null,
+    error: result.error || null,
+    rawError: result.rawError || null,
+    hasKey: Boolean(DEEPSEEK_API_KEY),
+  });
+});
+
+
 app.get("/ai-router-test", async (req, res) => {
   try {
     const promptText =
