@@ -31,11 +31,13 @@ app.use(cors());
 app.use(express.json({ limit: "25mb" }));
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
 const TOGETHER_API_KEY = process.env.TOGETHER_API_KEY;
 const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY;
 
+const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
 const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
 const MISTRAL_MODEL = process.env.MISTRAL_MODEL || "mistral-small-latest";
 const TOGETHER_MODEL =
@@ -388,6 +390,12 @@ async function generateAiReplyWithFallback({ promptText, parts, hasImage }) {
   }
 
   const providers = [
+    {
+      provider: "deepseek",
+      apiKey: DEEPSEEK_API_KEY,
+      url: "https://api.deepseek.com/chat/completions",
+      model: DEEPSEEK_MODEL,
+    },
     {
       provider: "groq",
       apiKey: GROQ_API_KEY,
