@@ -503,6 +503,36 @@ app.get("/ai-router-test", async (req, res) => {
   }
 });
 
+
+app.get("/ai-router-debug", async (req, res) => {
+  try {
+    const promptText =
+      "Say exactly this sentence only: Shonen AI fallback router debug successful.";
+
+    const parts = [{ text: promptText }];
+
+    const result = await generateAiReplyWithFallback({
+      promptText,
+      parts,
+      hasImage: false,
+    });
+
+    return res.json({
+      success: true,
+      provider: result.provider,
+      model: result.model,
+      reply: result.text,
+    });
+  } catch (error) {
+    return res.status(error.status || 500).json({
+      success: false,
+      error: error.message || "AI router debug failed.",
+      failures: error.failures || [],
+    });
+  }
+});
+
+
 app.get("/app-version", (req, res) => {
   const latestVersion = process.env.APP_LATEST_VERSION || "1.0.1";
   const latestBuild = Number(process.env.APP_LATEST_BUILD || 2);
