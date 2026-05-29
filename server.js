@@ -561,14 +561,14 @@ app.get("/ai-router-debug", async (req, res) => {
 
 
 app.get("/app-version", (req, res) => {
-  const latestVersion = process.env.APP_LATEST_VERSION || "1.0.1";
-  const latestBuild = Number(process.env.APP_LATEST_BUILD || 2);
+  const latestVersion = process.env.APP_LATEST_VERSION || "1.0.3";
+  const latestBuild = Number(process.env.APP_LATEST_BUILD || 3);
   const minRequiredBuild = Number(process.env.APP_MIN_REQUIRED_BUILD || 1);
   const forceUpdate = process.env.APP_FORCE_UPDATE === "true";
 
   const apkUrl =
     process.env.APP_APK_URL ||
-    "https://github.com/KrrishProjects/shonen_ai_website/releases/download/v1.0.1/ShonenAI-v1.0.1.apk";
+    "https://github.com/KrrishProjects/shonen_ai_website/releases/download/v1.0.3/ShonenAI-v1.0.3.apk";
 
   const websiteUrl =
     process.env.APP_WEBSITE_URL ||
@@ -579,7 +579,7 @@ app.get("/app-version", (req, res) => {
 
   const updateMessage =
     process.env.APP_UPDATE_MESSAGE ||
-    "A new Shonen AI update is available with update checker, feedback support, changelog, contact developer, and release polish.";
+    "Shonen AI v1.0.3 is here with the new Light Glass UI, better readability, cleaner sidebar/settings, tools inside the + menu, and stability improvements.";
 
   res.json({
     success: true,
